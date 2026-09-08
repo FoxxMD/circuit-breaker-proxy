@@ -32,7 +32,7 @@ describe('ProxyWithCircuitBreaker', () => {
   })
 
   it('should successfully return data from the first client', (done) => {
-    const proxy = ProxyWithCircuitBreaker.create(clients, handleWhen, defaultOpts)
+    const proxy = ProxyWithCircuitBreaker.create(clients, defaultOpts, { handleWhenCondition: handleWhen })
     const expectedData = { id: 1 }
 
     // Setup: clientA succeeds
@@ -51,7 +51,7 @@ describe('ProxyWithCircuitBreaker', () => {
   })
 
   it('should rotate clients (Round Robin) on consecutive calls', (done) => {
-    const proxy = ProxyWithCircuitBreaker.create(clients, handleWhen, defaultOpts)
+    const proxy = ProxyWithCircuitBreaker.create(clients, defaultOpts, { handleWhenCondition: handleWhen })
     clientA.getData.callsArgWith(0, null, 'res1')
     clientB.getData.callsArgWith(0, null, 'res2')
 
@@ -73,7 +73,7 @@ describe('ProxyWithCircuitBreaker', () => {
   })
 
   it('should failover to the next client if the first returns a handleable error', (done) => {
-    const proxy = ProxyWithCircuitBreaker.create(clients, handleWhen, defaultOpts)
+    const proxy = ProxyWithCircuitBreaker.create(clients, defaultOpts, { handleWhenCondition: handleWhen })
     const retryError = new Error('retry-me')
     const successData = 'recovered'
 
@@ -94,7 +94,7 @@ describe('ProxyWithCircuitBreaker', () => {
   })
 
   it('should throw immediately if the error is NOT handleable', (done) => {
-    const proxy = ProxyWithCircuitBreaker.create(clients, handleWhen, defaultOpts)
+    const proxy = ProxyWithCircuitBreaker.create(clients, defaultOpts, { handleWhenCondition: handleWhen })
     const fatalError = new Error('fatal-error')
 
     clientA.getData.callsArgWith(0, fatalError)
@@ -114,10 +114,10 @@ describe('ProxyWithCircuitBreaker', () => {
     const clock = useFakeTimers()
 
     const halfOpenAfter = 1000
-    const proxy = ProxyWithCircuitBreaker.create([clientA], handleWhen, () => ({
+    const proxy = ProxyWithCircuitBreaker.create([clientA], () => ({
       halfOpenAfter,
       breaker: new ConsecutiveBreaker(3),
-    }))
+    }), { handleWhenCondition: handleWhen })
 
     const retryError = new Error('retry-me')
     clientA.getData.callsArgWith(0, retryError)
@@ -165,10 +165,10 @@ describe('ProxyWithCircuitBreaker', () => {
     const clock = useFakeTimers()
 
     const halfOpenAfter = 1000
-    const proxy = ProxyWithCircuitBreaker.create([clientA, clientB, clientC], handleWhen, () => ({
+    const proxy = ProxyWithCircuitBreaker.create([clientA, clientB, clientC], () => ({
       halfOpenAfter,
       breaker: new ConsecutiveBreaker(3),
-    }))
+    }), { handleWhenCondition: handleWhen })
 
     const retryError = new Error('retry-me')
     clientA.getData.callsArgWith(0, retryError)
@@ -230,7 +230,7 @@ describe('ProxyWithCircuitBreaker', () => {
   })
 
   it('should throw error if the last argument is not a function', () => {
-    const proxy = ProxyWithCircuitBreaker.create([clientA], handleWhen, defaultOpts)
+    const proxy = ProxyWithCircuitBreaker.create([clientA], defaultOpts, { handleWhenCondition: handleWhen })
     throws(() => {
       proxy.getData('no-callback-here')
     }, /Method getData expected a callback function/)

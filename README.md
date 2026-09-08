@@ -19,17 +19,19 @@ const proxy = ProxyWithCircuitBreaker.create([
   new Etcd('host1.example.com'),
   new Etcd('host2.example.com'),
   new Etcd('host3.example.com'),
-], err => {
-  // If the error is related to network, continue with the next client.
-  if(err instanceof NetworkError) return true
-  
-  // If it's non-network related error, return it straightaway
-  return false
-}, () => ({
+], () => ({
     // If a client fails 3 times in a row, remove it for 10 seconds
     halfOpenAfter: 10000,
     breaker: new ConsecutiveBreaker(3),
-}))
+}), {
+  handleWhenCondition: err => {
+    // If the error is related to network, continue with the next client.
+    if(err instanceof NetworkError) return true
+
+    // If it's non-network related error, return it straightaway
+    return false
+  }
+})
 
 proxy.get('key', (err, data) => {
   // ... process data

@@ -16,6 +16,14 @@ interface ProxyState<T> {
   comparer?: (clientA: T, clientB: T) => number
 }
 
+export interface ProxyWithCircuitBreakerOptions<T> {
+  /** Return true if the error should trigger a retry against the next client. Defaults to always retrying. */
+  handleWhenCondition?: (error: Error) => boolean
+  /** Use `Array.sort`'s comparator with provided client instances to determine selection order
+   *  When omitted, the default persisted round-robin selection is used instead. */
+  comparer?: (clientA: T, clientB: T) => number
+}
+
 const stateMap = new WeakMap<object, ProxyState<any>>()
 
 /**
@@ -28,35 +36,31 @@ const stateMap = new WeakMap<object, ProxyState<any>>()
 export class ProxyWithCircuitBreaker<T extends object = object> {
   /**
    * @param clients An array of client instances accepting a callback in functions.
-   * @param handleWhenCondition Return true if the error should trigger a retry against the next client.
    * @param circuitBreakerOpts Factory for the cockatiel circuit breaker options, invoked once per client.
-   * @param clientComparer Optional. Like `Array.sort`'s comparator, but receives the actual client
-   *   instances — used to determine try-order for each call. When omitted, the default persisted
-   *   round-robin selection is used instead.
+   * @param options Optional. `handleWhenCondition` defaults to always retrying when omitted; `comparer`
+   *   defaults to the persisted round-robin selection when omitted.
    */
   static create<T extends object>(
     clients: T[],
-    handleWhenCondition: (error: Error) => boolean,
     circuitBreakerOpts: () => ICircuitBreakerOptions,
-    clientComparer?: (clientA: T, clientB: T) => number
+    options?: ProxyWithCircuitBreakerOptions<T>
   ): ProxyWithCircuitBreaker<T> & T {
-    return new ProxyWithCircuitBreaker<T>(clients, handleWhenCondition, circuitBreakerOpts, clientComparer) as ProxyWithCircuitBreaker<T> & T
+    return new ProxyWithCircuitBreaker<T>(clients, circuitBreakerOpts, options) as ProxyWithCircuitBreaker<T> & T
   }
 
   /**
    * @param clients An array of client instances accepting a callback in functions.
-   * @param handleWhenCondition Return true if the error should trigger a retry against the next client.
    * @param circuitBreakerOpts Factory for the cockatiel circuit breaker options, invoked once per client.
-   * @param clientComparer Optional. Like `Array.sort`'s comparator, but receives the actual client
-   *   instances — used to determine try-order for each call. When omitted, the default persisted
-   *   round-robin selection is used instead.
+   * @param options Optional. `handleWhenCondition` defaults to always retrying when omitted; `comparer`
+   *   defaults to the persisted round-robin selection when omitted.
    */
   constructor(
     clients: T[],
-    handleWhenCondition: (error: Error) => boolean,
     circuitBreakerOpts: () => ICircuitBreakerOptions,
-    clientComparer?: (clientA: T, clientB: T) => number
+    options?: ProxyWithCircuitBreakerOptions<T>
   ) {
+    const handleWhenCondition = options?.handleWhenCondition ?? (() => true)
+
     const registry: ClientEntry<T>[] = clients.map(client => ({
       client,
       breaker: circuitBreaker(handleWhen(handleWhenCondition), circuitBreakerOpts())
@@ -67,7 +71,7 @@ export class ProxyWithCircuitBreaker<T extends object = object> {
       registry,
       currentIndex: 0,
       handleWhenCondition,
-      comparer: clientComparer
+      comparer: options?.comparer
     })
 
     return new Proxy(this, {
