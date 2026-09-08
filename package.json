@@ -43,12 +43,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ceecko/circuit-breaker-proxy.git"
+    "url": "git+https://github.com/foxxmd/circuit-breaker-proxy.git"
   },
   "bugs": {
-    "url": "https://github.com/ceecko/circuit-breaker-proxy/issues"
+    "url": "https://github.com/foxxmd/circuit-breaker-proxy/issues"
   },
-  "homepage": "https://github.com/ceecko/circuit-breaker-proxy#readme",
+  "homepage": "https://github.com/foxxmd/circuit-breaker-proxy#readme",
   "exports": {
     "./package.json": "./package.json",
     ".": {
