@@ -44,6 +44,8 @@ Provide a `comparer` function to determine the client selection order at functio
 
 This comparison is done *once* when the function is initially called and the order is then set for the duration of the function call/attempts.
 
+`comparer` may be sync or async (return a `Promise<number>`) — either way it is awaited before continuing.
+
 ```ts
 import { ProxyWithCircuitBreaker } from '@ceecko/circuit-breaker-proxy';
 import {MyCoolClient} from './myModule';

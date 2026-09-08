@@ -13,18 +13,34 @@ interface ProxyState<T> {
   registry: ClientEntry<T>[]
   currentIndex: number
   handleWhenCondition: (error: Error) => boolean
-  comparer?: (clientA: T, clientB: T) => number
+  comparer?: (clientA: T, clientB: T) => number | Promise<number>
 }
 
 export interface ProxyWithCircuitBreakerOptions<T> {
   /** Return true if the error should trigger a retry against the next client. Defaults to always retrying. */
   handleWhenCondition?: (error: Error) => boolean
-  /** Use `Array.sort`'s comparator with provided client instances to determine selection order
-   *  When omitted, the default persisted round-robin selection is used instead. */
-  comparer?: (clientA: T, clientB: T) => number
+  /** Use `Array.sort`'s comparator with provided client instances to determine selection order.
+   *  May be sync or async (return a Promise<number>). When omitted, the default persisted
+   *  round-robin selection is used instead. */
+  comparer?: (clientA: T, clientB: T) => number | Promise<number>
 }
 
 const stateMap = new WeakMap<object, ProxyState<any>>()
+
+/** Insertion sort so the (possibly async) comparer can be awaited pairwise; Array.sort requires sync compare fns. */
+async function asyncSort<E>(items: E[], comparator: (a: E, b: E) => number | Promise<number>): Promise<E[]> {
+  const result = [...items]
+  for (let i = 1; i < result.length; i++) {
+    const current = result[i]
+    let j = i - 1
+    while (j >= 0 && (await comparator(result[j], current)) > 0) {
+      result[j + 1] = result[j]
+      j--
+    }
+    result[j + 1] = current
+  }
+  return result
+}
 
 /**
  * A proxy that round-robins calls across a set of callback-based clients, applying
@@ -104,9 +120,9 @@ export class ProxyWithCircuitBreaker<T extends object = object> {
 
     let order: ClientEntry<T>[]
     if (state.comparer) {
-      // COMPARER ORDER: User-supplied ordering, fixed for the whole call.
+      // COMPARER ORDER: User-supplied ordering (sync or async), fixed for the whole call.
       // Does not touch the round-robin pointer.
-      order = [...state.registry].sort((a, b) => state.comparer!(a.client, b.client))
+      order = await asyncSort(state.registry, (a, b) => state.comparer!(a.client, b.client))
     } else {
       // ATOMIC START: Grab our starting slot and move the global pointer once.
       // This ensures the NEXT request starts somewhere else.
