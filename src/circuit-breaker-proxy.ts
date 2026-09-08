@@ -1,4 +1,4 @@
-import { circuitBreaker, handleWhen, isBrokenCircuitError, type CircuitBreakerPolicy, type ICircuitBreakerOptions } from 'cockatiel';
+import { circuitBreaker, handleWhen, isBrokenCircuitError, CircuitState, type CircuitBreakerPolicy, type ICircuitBreakerOptions } from 'cockatiel';
 import { promisify } from 'node:util';
 
 const EXECUTE_WITH_CALLBACK = Symbol('executeWithCallback')
@@ -144,6 +144,12 @@ export class ProxyWithCircuitBreaker<T extends object = object> {
         const method = (client as any)[methodName]
         if (typeof method !== 'function') {
           throw new Error(`Method ${methodName} not found on client`)
+        }
+
+        if(breaker.state === CircuitState.Open) {
+          // not taking requests right now
+          attempts++;
+          continue;
         }
 
         const fn = promisify(method).bind(client)
