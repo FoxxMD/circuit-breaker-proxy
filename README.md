@@ -5,7 +5,7 @@ You provide a list of generic clients and this package routes calls to the clien
 If any of the clients fails to process a function call, the call is retried with the next client.
 If a client continuously fails to respond to function calls, it can be temporarily removed from the list.
 
-- For now only functions with callbacks are supported.
+- Non-function properties on a client are passed straight through, read from the first client.
 - Uses [cockatiel](https://github.com/connor4312/cockatiel) to handle circuit breaker logic
 
 ## Example
@@ -33,9 +33,8 @@ const proxy = ProxyWithCircuitBreaker.create([
   }
 })
 
-proxy.get('key', (err, data) => {
-  // ... process data
-})
+const data = await proxy.get('key')
+// ... process data
 ```
 
 ## BYO Order

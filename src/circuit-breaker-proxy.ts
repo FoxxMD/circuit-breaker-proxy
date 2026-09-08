@@ -1,7 +1,5 @@
 import { circuitBreaker, handleWhen, isBrokenCircuitError, type CircuitBreakerPolicy, type ICircuitBreakerOptions } from 'cockatiel';
-import { promisify } from 'node:util';
 
-const EXECUTE_WITH_CALLBACK = Symbol('executeWithCallback')
 const EXECUTE_RESILIENTLY = Symbol('executeResiliently')
 
 interface ClientEntry<T> {
@@ -27,8 +25,14 @@ export interface ProxyWithCircuitBreakerOptions<T> {
 
 const stateMap = new WeakMap<object, ProxyState<any>>()
 
+/** Every method on `T` is called through the circuit breaker, so it always returns a Promise —
+ *  even if the underlying client method is synchronous. Non-function properties are untouched. */
+type AsyncMethods<T> = {
+  [K in keyof T]: T[K] extends (...args: infer A) => infer R ? (...args: A) => Promise<Awaited<R>> : T[K]
+}
+
 /** The type returned by {@link ProxyWithCircuitBreaker.create} — use this to type a variable ahead of assignment. */
-export type CircuitBreakerProxy<T extends object> = ProxyWithCircuitBreaker<T> & T
+export type CircuitBreakerProxy<T extends object> = ProxyWithCircuitBreaker<T> & AsyncMethods<T>
 
 /** Insertion sort so the (possibly async) comparer can be awaited pairwise; Array.sort requires sync compare fns. */
 async function asyncSort<E>(items: E[], comparator: (a: E, b: E) => number | Promise<number>): Promise<E[]> {
@@ -46,15 +50,17 @@ async function asyncSort<E>(items: E[], comparator: (a: E, b: E) => number | Pro
 }
 
 /**
- * A proxy that round-robins calls across a set of callback-based clients, applying
- * circuit breaker logic (via cockatiel) to each client individually.
+ * A proxy that round-robins calls across a set of clients, applying circuit breaker
+ * logic (via cockatiel) to each client individually.
  *
- * The returned instance is also typed as `T`, so any method available on a client
- * is available (and callable with the same callback signature) on the proxy.
+ * Any method on a client — sync or async, any number/shape of arguments — is available
+ * on the proxy under the same name, and always returns a Promise (awaited internally,
+ * even for sync methods, since the circuit breaker execution path is async).
+ * Non-function properties are passed through as-is, from the first client.
  */
 export class ProxyWithCircuitBreaker<T extends object = object> {
   /**
-   * @param clients An array of client instances accepting a callback in functions.
+   * @param clients An array of client instances. Any method (sync or async, any argument shape) is proxied.
    * @param circuitBreakerOpts Factory for the cockatiel circuit breaker options, invoked once per client.
    * @param options Optional. `handleWhenCondition` defaults to always retrying when omitted; `comparer`
    *   defaults to the persisted round-robin selection when omitted.
@@ -68,7 +74,7 @@ export class ProxyWithCircuitBreaker<T extends object = object> {
   }
 
   /**
-   * @param clients An array of client instances accepting a callback in functions.
+   * @param clients An array of client instances. Any method (sync or async, any argument shape) is proxied.
    * @param circuitBreakerOpts Factory for the cockatiel circuit breaker options, invoked once per client.
    * @param options Optional. `handleWhenCondition` defaults to always retrying when omitted; `comparer`
    *   defaults to the persisted round-robin selection when omitted.
@@ -100,21 +106,9 @@ export class ProxyWithCircuitBreaker<T extends object = object> {
           return (target as any)[prop]
         }
 
-        return (...args: any[]) => (target as any)[EXECUTE_WITH_CALLBACK](prop, args)
+        return (...args: any[]) => (target as any)[EXECUTE_RESILIENTLY](prop, args)
       }
     }) as this
-  }
-
-  private [EXECUTE_WITH_CALLBACK](methodName: string, args: any[]): void {
-    const callback = args.pop()
-
-    if (typeof callback !== 'function') {
-      throw new Error(`Method ${methodName} expected a callback function.`)
-    }
-
-    this[EXECUTE_RESILIENTLY](methodName, args)
-      .then(result => callback(null, result))
-      .catch(err => callback(err))
   }
 
   private async [EXECUTE_RESILIENTLY](methodName: string, args: any[]): Promise<any> {
@@ -149,8 +143,7 @@ export class ProxyWithCircuitBreaker<T extends object = object> {
           throw new Error(`Method ${methodName} not found on client`)
         }
 
-        const fn = promisify(method).bind(client)
-        const res = await breaker.execute(() => fn(...args))
+        const res = await breaker.execute(() => method.apply(client, args))
         return res
       } catch (error) {
         if (isBrokenCircuitError(error)) {
