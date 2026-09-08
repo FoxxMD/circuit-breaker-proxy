@@ -11,9 +11,9 @@ If a client continuously fails to respond to function calls, it can be temporari
 ## Example
 A good example is with a `node-etcd` client across many different hosts where each host is expected to provide the same response:
 
-```js
-const { ProxyWithCircuitBreaker } = require('@ceecko/circuit-breaker-proxy')
-const Etcd = require('node-etcd')
+```ts
+import { ProxyWithCircuitBreaker } from '@ceecko/circuit-breaker-proxy';
+import { Etcd } from 'node-etcd';
 
 const proxy = ProxyWithCircuitBreaker.create([
   new Etcd('host1.example.com'),
@@ -36,4 +36,34 @@ const proxy = ProxyWithCircuitBreaker.create([
 proxy.get('key', (err, data) => {
   // ... process data
 })
+```
+
+## BYO Order
+
+Provide a `comparer` function to determine the client selection order at function call time.
+
+This comparison is done *once* when the function is initially called and the order is then set for the duration of the function call/attempts.
+
+```ts
+import { ProxyWithCircuitBreaker } from '@ceecko/circuit-breaker-proxy';
+import {MyCoolClient} from './myModule';
+
+const proxy = ProxyWithCircuitBreaker.create([
+  new MyCoolClient('a'),
+  new MyCoolClient('b'),
+], ({
+    // If a client fails 3 times in a row, remove it for 10 seconds
+    halfOpenAfter: 10000,
+    breaker: new ConsecutiveBreaker(3),
+}),
+{
+  comparer: (clientA, clientB) => {
+    const aPrior = clientA.resolvePriority(); // 2
+    const bPRior = clientB.resolvePriority(); // 4
+    // MyCoolClient('b') will be ordered first
+    return aPrior - bPRior;
+  }
+});
+
+proxy.doSomething(); // first call uses MyCoolClient('b')
 ```
