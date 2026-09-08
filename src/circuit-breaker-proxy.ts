@@ -1,4 +1,4 @@
-import { circuitBreaker, handleWhen, isBrokenCircuitError, CircuitState, type CircuitBreakerPolicy, type ICircuitBreakerOptions } from 'cockatiel';
+import { circuitBreaker, handleWhen, isBrokenCircuitError, type CircuitBreakerPolicy, type ICircuitBreakerOptions } from 'cockatiel';
 import { promisify } from 'node:util';
 
 const EXECUTE_WITH_CALLBACK = Symbol('executeWithCallback')
@@ -26,6 +26,9 @@ export interface ProxyWithCircuitBreakerOptions<T> {
 }
 
 const stateMap = new WeakMap<object, ProxyState<any>>()
+
+/** The type returned by {@link ProxyWithCircuitBreaker.create} — use this to type a variable ahead of assignment. */
+export type CircuitBreakerProxy<T extends object> = ProxyWithCircuitBreaker<T> & T
 
 /** Insertion sort so the (possibly async) comparer can be awaited pairwise; Array.sort requires sync compare fns. */
 async function asyncSort<E>(items: E[], comparator: (a: E, b: E) => number | Promise<number>): Promise<E[]> {
@@ -60,8 +63,8 @@ export class ProxyWithCircuitBreaker<T extends object = object> {
     clients: T[],
     circuitBreakerOpts: () => ICircuitBreakerOptions,
     options?: ProxyWithCircuitBreakerOptions<T>
-  ): ProxyWithCircuitBreaker<T> & T {
-    return new ProxyWithCircuitBreaker<T>(clients, circuitBreakerOpts, options) as ProxyWithCircuitBreaker<T> & T
+  ): CircuitBreakerProxy<T> {
+    return new ProxyWithCircuitBreaker<T>(clients, circuitBreakerOpts, options) as CircuitBreakerProxy<T>
   }
 
   /**
@@ -70,7 +73,7 @@ export class ProxyWithCircuitBreaker<T extends object = object> {
    * @param options Optional. `handleWhenCondition` defaults to always retrying when omitted; `comparer`
    *   defaults to the persisted round-robin selection when omitted.
    */
-  constructor(
+  private constructor(
     clients: T[],
     circuitBreakerOpts: () => ICircuitBreakerOptions,
     options?: ProxyWithCircuitBreakerOptions<T>
@@ -144,12 +147,6 @@ export class ProxyWithCircuitBreaker<T extends object = object> {
         const method = (client as any)[methodName]
         if (typeof method !== 'function') {
           throw new Error(`Method ${methodName} not found on client`)
-        }
-
-        if(breaker.state === CircuitState.Open) {
-          // not taking requests right now
-          attempts++;
-          continue;
         }
 
         const fn = promisify(method).bind(client)
