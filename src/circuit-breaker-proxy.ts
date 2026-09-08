@@ -1,12 +1,12 @@
-const { circuitBreaker, handleWhen, isBrokenCircuitError } = require('cockatiel')
-const { promisify } = require('util')
+import { circuitBreaker, handleWhen, isBrokenCircuitError } from 'cockatiel';
+import { promisify } from 'node:util';
 
 const EXECUTE_WITH_CALLBACK = Symbol('executeWithCallback')
 const EXECUTE_RESILIENTLY = Symbol('executeResiliently')
 
 const stateMap = new WeakMap()
 
-class ProxyWithCircuitBreaker {
+export class ProxyWithCircuitBreaker {
   /**
    * @template T
    * @param {T[]} clients An array of client instances accepting callback in functions.
@@ -104,5 +104,3 @@ class ProxyWithCircuitBreaker {
     throw lastError || new Error("All clients unavailable or failed")
   }
 }
-
-module.exports = ProxyWithCircuitBreaker

@@ -1,7 +1,7 @@
-const assert = require('assert')
-const ProxyWithCircuitBreaker = require("../src/circuit-breaker-proxy")
-const sinon = require('sinon')
-const { ConsecutiveBreaker } = require('cockatiel')
+import { strictEqual, deepStrictEqual, match, throws } from 'assert'
+import { ProxyWithCircuitBreaker } from "../src/circuit-breaker-proxy"
+import { stub, restore, useFakeTimers, assert as _assert } from 'sinon'
+import { ConsecutiveBreaker } from 'cockatiel'
 
 describe('ProxyWithCircuitBreaker', () => {
   let clientA, clientB, clientC, handleWhen, clients
@@ -13,18 +13,18 @@ describe('ProxyWithCircuitBreaker', () => {
 
   beforeEach(() => {
     // 1. Create mock clients with a dummy method
-    clientA = { getData: sinon.stub() }
-    clientB = { getData: sinon.stub() }
-    clientC = { getData: sinon.stub() }
+    clientA = { getData: stub() }
+    clientB = { getData: stub() }
+    clientC = { getData: stub() }
 
     clients = [clientA, clientB]
 
     // 2. Define a condition: handle errors where message is 'retry-me'
-    handleWhen = sinon.stub().callsFake((err) => err.message === 'retry-me')
+    handleWhen = stub().callsFake((err) => err.message === 'retry-me')
   })
 
   afterEach(() => {
-    sinon.restore()
+    restore()
   })
 
   it('should successfully return data from the first client', (done) => {
@@ -36,9 +36,9 @@ describe('ProxyWithCircuitBreaker', () => {
 
     proxy.getData('param1', (err, result) => {
       try {
-        assert.strictEqual(err, null)
-        assert.deepStrictEqual(result, expectedData)
-        assert.strictEqual(clientA.getData.calledOnce, true)
+        strictEqual(err, null)
+        deepStrictEqual(result, expectedData)
+        strictEqual(clientA.getData.calledOnce, true)
         done()
       } catch (e) {
         done(e)
@@ -56,10 +56,10 @@ describe('ProxyWithCircuitBreaker', () => {
       // Second call should use clientB (index 1)
       proxy.getData((err2, res2) => {
         try {
-          assert.strictEqual(res1, 'res1')
-          assert.strictEqual(res2, 'res2')
-          assert.strictEqual(clientA.getData.calledOnce, true)
-          assert.strictEqual(clientB.getData.calledOnce, true)
+          strictEqual(res1, 'res1')
+          strictEqual(res2, 'res2')
+          strictEqual(clientA.getData.calledOnce, true)
+          strictEqual(clientB.getData.calledOnce, true)
           done()
         } catch (e) {
           done(e)
@@ -79,9 +79,9 @@ describe('ProxyWithCircuitBreaker', () => {
 
     proxy.getData((err, result) => {
       try {
-        assert.strictEqual(result, successData)
-        assert.strictEqual(clientA.getData.calledOnce, true)
-        assert.strictEqual(clientB.getData.calledOnce, true)
+        strictEqual(result, successData)
+        strictEqual(clientA.getData.calledOnce, true)
+        strictEqual(clientB.getData.calledOnce, true)
         done()
       } catch (e) {
         done(e)
@@ -97,8 +97,8 @@ describe('ProxyWithCircuitBreaker', () => {
 
     proxy.getData((err, result) => {
       try {
-        assert.strictEqual(err, fatalError)
-        assert.strictEqual(clientB.getData.called, false, 'Should not have tried clientB')
+        strictEqual(err, fatalError)
+        strictEqual(clientB.getData.called, false, 'Should not have tried clientB')
         done()
       } catch (e) {
         done(e)
@@ -107,7 +107,7 @@ describe('ProxyWithCircuitBreaker', () => {
   })
 
   it('should trip the circuit breaker and reset after the timeout', async () => {
-    const clock = sinon.useFakeTimers()
+    const clock = useFakeTimers()
 
     const halfOpenAfter = 1000
     const proxy = ProxyWithCircuitBreaker.create([clientA], handleWhen, () => ({
@@ -128,8 +128,8 @@ describe('ProxyWithCircuitBreaker', () => {
     clientA.getData.resetHistory()
     await new Promise((resolve) => {
       proxy.getData(err => {
-        assert.strictEqual(clientA.getData.called, false, 'Should not call client when OPEN')
-        assert.match(err.message, /All clients unavailable/, 'Should return the "unavailable" error')
+        strictEqual(clientA.getData.called, false, 'Should not call client when OPEN')
+        match(err.message, /All clients unavailable/, 'Should return the "unavailable" error')
         resolve(null)
       })
     })
@@ -144,9 +144,9 @@ describe('ProxyWithCircuitBreaker', () => {
     await new Promise((resolve, reject) => {
       proxy.getData((err, result) => {
         try {
-          assert.strictEqual(err, null)
-          assert.strictEqual(result, 'success-after-reset')
-          assert.strictEqual(clientA.getData.calledOnce, true)
+          strictEqual(err, null)
+          strictEqual(result, 'success-after-reset')
+          strictEqual(clientA.getData.calledOnce, true)
           resolve(null)
         } catch (e) {
           reject(e)
@@ -158,7 +158,7 @@ describe('ProxyWithCircuitBreaker', () => {
   })
 
   it('should work with complex scenario - 3 clients and errors', async () => {
-    const clock = sinon.useFakeTimers()
+    const clock = useFakeTimers()
 
     const halfOpenAfter = 1000
     const proxy = ProxyWithCircuitBreaker.create([clientA, clientB, clientC], handleWhen, () => ({
@@ -179,9 +179,9 @@ describe('ProxyWithCircuitBreaker', () => {
 
     // Call number:     1   2  3   4   5  6   7   8  9  10 11 12
     // Called clients: A,B; B; C; A,B; B; C; A,B; B; C; B; B; C
-    sinon.assert.callCount(clientA.getData, 3)
-    sinon.assert.callCount(clientB.getData, 8)
-    sinon.assert.callCount(clientC.getData, 4)
+    _assert.callCount(clientA.getData, 3)
+    _assert.callCount(clientB.getData, 8)
+    _assert.callCount(clientC.getData, 4)
 
     // Move clock after halfOpen interval
     clock.tick(halfOpenAfter+1)
@@ -197,9 +197,9 @@ describe('ProxyWithCircuitBreaker', () => {
     // clientA shall be called once before removed again due to halfOpen state
     // Call number:     1   2  3  4  5  6 
     // Called clients: A,B; B; C; B; B; C
-    sinon.assert.callCount(clientA.getData, 1)
-    sinon.assert.callCount(clientB.getData, 4)
-    sinon.assert.callCount(clientC.getData, 2)
+    _assert.callCount(clientA.getData, 1)
+    _assert.callCount(clientB.getData, 4)
+    _assert.callCount(clientC.getData, 2)
 
     // Move clock after halfOpen interval
     clock.tick(halfOpenAfter+1)
@@ -218,16 +218,16 @@ describe('ProxyWithCircuitBreaker', () => {
     // clientA is again called 3 times before opening the circuit breaker
     // Call number:     1  2  3   4   5  6   7   8  9   10  11 12 13 14 15
     // Called clients:  A; B; C; A,B; B; C; A,B; B; C; A,B; B; C; B; B; C
-    sinon.assert.callCount(clientA.getData, 4)
-    sinon.assert.callCount(clientB.getData, 9)
-    sinon.assert.callCount(clientC.getData, 5)
+    _assert.callCount(clientA.getData, 4)
+    _assert.callCount(clientB.getData, 9)
+    _assert.callCount(clientC.getData, 5)
 
     clock.restore()
   })
 
   it('should throw error if the last argument is not a function', () => {
     const proxy = ProxyWithCircuitBreaker.create([clientA], handleWhen, defaultOpts)
-    assert.throws(() => {
+    throws(() => {
       proxy.getData('no-callback-here')
     }, /Method getData expected a callback function/)
   })
