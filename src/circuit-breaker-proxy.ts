@@ -13,6 +13,7 @@ interface ProxyState<T> {
   registry: ClientEntry<T>[]
   currentIndex: number
   handleWhenCondition: (error: Error) => boolean
+  comparer?: (clientA: T, clientB: T) => number
 }
 
 const stateMap = new WeakMap<object, ProxyState<any>>()
@@ -29,21 +30,33 @@ export class ProxyWithCircuitBreaker<T extends object = object> {
    * @param clients An array of client instances accepting a callback in functions.
    * @param handleWhenCondition Return true if the error should trigger a retry against the next client.
    * @param circuitBreakerOpts Factory for the cockatiel circuit breaker options, invoked once per client.
+   * @param clientComparer Optional. Like `Array.sort`'s comparator, but receives the actual client
+   *   instances — used to determine try-order for each call. When omitted, the default persisted
+   *   round-robin selection is used instead.
    */
   static create<T extends object>(
     clients: T[],
     handleWhenCondition: (error: Error) => boolean,
-    circuitBreakerOpts: () => ICircuitBreakerOptions
+    circuitBreakerOpts: () => ICircuitBreakerOptions,
+    clientComparer?: (clientA: T, clientB: T) => number
   ): ProxyWithCircuitBreaker<T> & T {
-    return new ProxyWithCircuitBreaker<T>(clients, handleWhenCondition, circuitBreakerOpts) as ProxyWithCircuitBreaker<T> & T
+    return new ProxyWithCircuitBreaker<T>(clients, handleWhenCondition, circuitBreakerOpts, clientComparer) as ProxyWithCircuitBreaker<T> & T
   }
 
   /**
    * @param clients An array of client instances accepting a callback in functions.
    * @param handleWhenCondition Return true if the error should trigger a retry against the next client.
    * @param circuitBreakerOpts Factory for the cockatiel circuit breaker options, invoked once per client.
+   * @param clientComparer Optional. Like `Array.sort`'s comparator, but receives the actual client
+   *   instances — used to determine try-order for each call. When omitted, the default persisted
+   *   round-robin selection is used instead.
    */
-  constructor(clients: T[], handleWhenCondition: (error: Error) => boolean, circuitBreakerOpts: () => ICircuitBreakerOptions) {
+  constructor(
+    clients: T[],
+    handleWhenCondition: (error: Error) => boolean,
+    circuitBreakerOpts: () => ICircuitBreakerOptions,
+    clientComparer?: (clientA: T, clientB: T) => number
+  ) {
     const registry: ClientEntry<T>[] = clients.map(client => ({
       client,
       breaker: circuitBreaker(handleWhen(handleWhenCondition), circuitBreakerOpts())
@@ -53,7 +66,8 @@ export class ProxyWithCircuitBreaker<T extends object = object> {
     stateMap.set(this, {
       registry,
       currentIndex: 0,
-      handleWhenCondition
+      handleWhenCondition,
+      comparer: clientComparer
     })
 
     return new Proxy(this, {
@@ -84,19 +98,27 @@ export class ProxyWithCircuitBreaker<T extends object = object> {
     const state = stateMap.get(this)!
     const len = state.registry.length
 
-    // ATOMIC START: Grab our starting slot and move the global pointer once.
-    // This ensures the NEXT request starts somewhere else.
-    const startingIndex = state.currentIndex
-    state.currentIndex = (startingIndex + 1) % len
+    let order: ClientEntry<T>[]
+    if (state.comparer) {
+      // COMPARER ORDER: User-supplied ordering, fixed for the whole call.
+      // Does not touch the round-robin pointer.
+      order = [...state.registry].sort((a, b) => state.comparer!(a.client, b.client))
+    } else {
+      // ATOMIC START: Grab our starting slot and move the global pointer once.
+      // This ensures the NEXT request starts somewhere else.
+      const startingIndex = state.currentIndex
+      state.currentIndex = (startingIndex + 1) % len
+
+      // LOCAL ROTATION: Rotate from our starting slot so this specific
+      // request tries every client in order.
+      order = Array.from({ length: len }, (_, i) => state.registry[(startingIndex + i) % len])
+    }
 
     let attempts = 0
     let lastError: Error | null = null
 
     while (attempts < len) {
-      // LOCAL ROTATION: We calculate our index based on our starting slot.
-      // This ensures this specific request tries every client in order.
-      const index = (startingIndex + attempts) % len;
-      const { client, breaker } = state.registry[index];
+      const { client, breaker } = order[attempts];
 
       try {
         const method = (client as any)[methodName]
