@@ -1,10 +1,14 @@
 import { strictEqual, deepStrictEqual, match, throws } from 'assert'
-import { ProxyWithCircuitBreaker } from "../src/circuit-breaker-proxy"
+import { ProxyWithCircuitBreaker } from "../src/circuit-breaker-proxy.ts"
 import { stub, restore, useFakeTimers, assert as _assert } from 'sinon'
 import { ConsecutiveBreaker } from 'cockatiel'
 
+interface DataClient {
+  getData: ReturnType<typeof stub>
+}
+
 describe('ProxyWithCircuitBreaker', () => {
-  let clientA, clientB, clientC, handleWhen, clients
+  let clientA: DataClient, clientB: DataClient, clientC: DataClient, handleWhen: ReturnType<typeof stub>, clients: DataClient[]
 
   const defaultOpts = () => ({
       halfOpenAfter: 10000,

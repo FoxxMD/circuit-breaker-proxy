@@ -1,0 +1,5 @@
+{
+  "spec": "test/**/*.ts",
+  "extension": ["ts"],
+  "node-option": ["experimental-strip-types"]
+}
