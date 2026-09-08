@@ -23,6 +23,9 @@
       "esm"
     ]
   },
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "cockatiel": "^3.2.1"
   },
