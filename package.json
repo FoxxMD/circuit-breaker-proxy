@@ -1,6 +1,6 @@
 {
-  "name": "@foxxmd/circuit-breaker-proxy",
-  "version": "2.0.0",
+  "name": "@foxxmd/load-balancer-proxy",
+  "version": "1.0.0",
   "type": "module",
   "description": "Node.js proxy for clients with circuit breaker. Allows providing a set of clients and round-robin function calls against them with circuit breaker logic.",
   "engines": {

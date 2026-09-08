@@ -1,4 +1,6 @@
-# Circuit break proxy
+# load-balancer-proxy
+
+**This library is originally based on [ceecko/circuit-breaker-proxy](https://github.com/ceecko/circuit-breaker-proxy).**
 
 A Node.js proxy (not an HTTP proxy) which supports applying circuit breaker logic across a set of generic clients.
 You provide a list of generic clients and this package routes calls to the clients in a round-robin fashion.
